@@ -1,49 +1,70 @@
 class Universe {
-	constructor(model, savedWorld) {
-		/*Generating universe model*/
+	constructor(savedWorld) {
+		/*------GENERATING UNIVERSE MODEL (TEMPORARY)*/
 
-		/*Basic constants*/
-		this.SECTOR_SIZE = model.universe.sectorSize;
-		this.G = model.universe.gravitionalConstant;
+		/*------CONSTANTS------*/
+		this.SECTOR_SIZE = 5e+13;
+		this.G = 6.674e-11;
 
-		/*Basic variables*/
+		/*------VARIABLES------*/
 		this.time = 0;
 		this.timeSpeed = 1;
+		this.frameTime = 0;
+		this.realFrameTime = 0;
+		this.currentSpacecraft = null;
 		this.paused = true;
+
+		/*------OBJECTS------*/
+		this.publisher = new Publisher();
 
 		/*------UNIVERSE STRUCTURE------*/
 
+		let model = getModel(this);
 		this.allCelestials = {};
-		/*------GALAXIES------*/
+		this.galaxies = model.galaxies;
+
+		/*------GENERATING ALL CELESTIALS LIST------*/
+		this.galaxies.forEach(function(galaxy) {
+			galaxy.satellites.forEach(function(star) {
+				this.allCelestials[star.uid] = star;
+				star.satellites.forEach(function(planet) {
+					this.allCelestials[planet.uid] = planet;
+					planet.satellites.forEach(function(moon) {
+						this.allCelestials[moon.uid] = moon;
+					}.bind(this));
+				}.bind(this));
+			}.bind(this));
+		}.bind(this));
+		/*------GALAXIES------*//*
 		this.galaxies = [];
 		model.universe.galaxies.forEach(function(galaxy) {
-			let galaxyObject = new Galaxy(galaxy);
+			let galaxyObject = new Galaxy(galaxy, this);
 
-			/*------STARS------*/
+			/*------STARS------*//*
 			let stars = [];
 			galaxy.stars.forEach(function(star) {
-				let starObject = new Star(star);
+				let starObject = new Star(star, this);
 
-				/*------PLANETS------*/
+				/*------PLANETS------*//*
 				let planets = [];
 				star.planets.forEach(function(planet) {
-					let planetObject = new Planet(planet);
+					let planetObject = new Planet(planet, this);
 
-					/*------MOONS------*/
+					/*------MOONS------*//*
 					planet.moons.forEach(function(moon) {
-						let moonObject = new Moon(moon);
+						let moonObject = new Moon(moon, this);
 						planetObject.addSatellite(moonObject);
 						this.allCelestials[moonObject.uid] = moonObject;
 					}.bind(this));
-					/*------PLANET CONTINUATION------*/
+					/*------PLANET CONTINUATION------*//*
 					starObject.addSatellite(planetObject);
 					this.allCelestials[planetObject.uid] = planetObject;
 				}.bind(this));
-				/*------STAR CONTINUATION------*/
+				/*------STAR CONTINUATION------*//*
 				galaxyObject.addSatellite(starObject);
 				this.allCelestials[starObject.uid] = starObject;
 			}.bind(this));
-			/*------GALAXY CONTINUATION------*/
+			/*------GALAXY CONTINUATION------*//*
 			this.galaxies.push(galaxyObject);
 		}.bind(this));
 		/*------END GALAXIES------*/
@@ -52,22 +73,22 @@ class Universe {
 		/*------BLUEPRINTS------*/
 
 		/*------ROCKET MODULES------*/
-		let rocketModules = {};
-		Object.keys(model.rocketModules.sets).forEach(function(setKey) {
-			model.rocketModules.sets[setKey].forEach(function(rocketModule) {
-				rocketModules[rocketModule.uid] = rocketModule;
+		let spacecraftModules = {};
+		Object.keys(model.model.spacecraftModules.sets).forEach(function(setKey) {
+			model.model.spacecraftModules.sets[setKey].forEach(function(spacecraftModule) {
+				spacecraftModules[spacecraftModule.uid] = spacecraftModule;
 			})
 		});
 
 		/*------ROCKETS------*/
-		let rockets = {};
-		model.rockets.forEach(function(rocket) {
-			rockets[rocket.uid] = rocket;
+		let spacecrafts = {};
+		model.model.spacecrafts.forEach(function(spacecraft) {
+			spacecrafts[spacecraft.uid] = spacecraft;
 		})
 
 		this.blueprints = {
-			rocketModules: rocketModules,
-			rockets: rockets
+			spacecraftModules: spacecraftModules,
+			spacecrafts: spacecrafts
 		};
 
 		/*------ARRAYS------*/
@@ -77,8 +98,7 @@ class Universe {
 	putSpacecraft(spacecraft, orbitedBody) {
 		orbitedBody.spacecrafts.push(spacecraft);
 		this.spacecrafts.push(spacecraft);
-		spacecraft.trajectory.celestial = orbitedBody;
-		spacecraft.calculateOrbit(orbitedBody);
+		spacecraft.calculateTrajectory(orbitedBody, this.time);
 	}
 
 	removeSpacecraft(spacecraft) {
@@ -101,14 +121,32 @@ class Universe {
 		}
 		/*------CALCULATING TIME------*/
 		let now = Date.now();
-		this.framePassedTime = (now - this.lastFrameTime) / 1000 * this.timeSpeed;
+		this.realFrameTime = (now - this.lastFrameTime) / 1000;
+		this.frameTime = this.realFrameTime * this.timeSpeed;
 		this.lastFrameTime = now;
-		this.time += this.framePassedTime;
-		//console.log(1 / (this.framePassedTime / this.timeSpeed));
+		this.time += this.frameTime;
+		//console.log(1 / (this.frameTime / this.timeSpeed));
+
+		/*------EXECUTING QUEUED EVENTS------*/
+
+		while (this.view.eventQueue.length > 0) {
+			this.view.eventQueue.shift()();
+		}
+
+		this.view.eventHandler.handleKeyboard();
+
+		/*------PUBLISHING NEW FRAME------*/
+		/*(To animations)*/
+		this.publisher.publish("realNextFrame", {deltaTime: this.realFrameTime * 1000});
+
+		/*------UPDATING CELESTIAL POSITIONS------*/
+		Object.keys(this.allCelestials).forEach(function(key) {
+			this.allCelestials[key].updatePosition(this.time);
+		}.bind(this));
 
 		/*------MOVING SPACECRAFTS------*/
 		this.spacecrafts.forEach(function(spacecraft) {
-			spacecraft.updatePosition(this.time);
+			spacecraft.updatePosition(this.time, this.frameTime);
 		}.bind(this));
 
 		/*------INFORMING VIEW TO RENDER------*/

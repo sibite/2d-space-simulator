@@ -1,24 +1,24 @@
 /*------GALAXY CLASS------*/
 
 class Galaxy {
-	constructor(data) {
+	constructor(data, universe) {
+		this.universe = universe;
 		this.uid = data.uid;
 		this.id = data.id;
 		this.name = data.name;
 		this.type = "Galaxy",
 		this.sector = data.sector;
+		this.position = new Vector(0, 0);
+		this.radius = 1e12;
 		this.satellites = [];
-		this.allSatellites = [];
 	}
 
-	addSatellite(satellite) {
-		if (this.satellites.indexOf(satellite) == -1) {
-			this.satellites.push(satellite);
-			this.allSatellites = [];
-			this.satellites.forEach(function(satellite) {
-				this.allSatellites.push(satellite, ...satellite.allSatellites);
-			}.bind(this));
-		}
+	getSector() {
+		return this.sector.copy();
+	}
+
+	getPosition() {
+		return this.position.copy();
 	}
 }
 
@@ -26,22 +26,20 @@ class Galaxy {
 /*------MAIN CELESTIAL CLASS------*/
 
 class Celestial {
-	constructor(data) {
+	constructor(data, universe) {
+		this.universe = universe;
 		this.uid = data.uid;
 		this.id = data.id;
 		this.name = data.name;
+		this.parent = data.parent;
+		this.position = new Vector(0, 0);
 		this.type = "Celestial";
-		this.subType = "Custom";
 		this.satellites = [];
-		this.allSatellites = [];
 		this.spacecrafts = [];
 	}
 
-	addSatellite(satellite) {
-		if (this.satellites.indexOf(satellite) == -1) {
-			this.satellites.push(satellite);
-			satellite.parent = this;
-		}
+	getOuterGravityField() {
+		return Vector.fromAngle(this.innerGravityField / this.orbitRadius, this.orbitRadius + this.innerGravityField).subtract(new Vector(this.orbitRadius, 0)).length;
 	}
 }
 
@@ -49,79 +47,117 @@ class Celestial {
 /*------STAR CLASS------*/
 
 class Star extends Celestial {
-	constructor(data) {
-		super(data);
-		this.subType = "Star";
+	constructor(data, universe) {
+		super(data, universe);
+		this.parent.satellites.push(this);
+		this.allSatellites = [];
+		this.type = "Star";
 		this.sector = data.sector;
 		this.mass = data.mass;
 		this.radius = data.radius;
+		this.innerGravityField = universe.SECTOR_SIZE * 0.9;
+		this.outerGravityField = this.innerGravityField;
 	}
 
-	addSatellite(satellite) {
-		super.addSatellite(satellite);
-		/*------RECREATING THE "ALL SATELLITES" ARRAY------*/
-		this.allSatellites = [];
-		this.satellites.forEach(function(satellite) {
-			this.allSatellites.push(satellite, ...satellite.satellites);
-		}.bind(this));
-
-		/*------PUTTING THE STAR OBJECT TO ITS PLANETS AND MOONS------*/
-		satellite.star = this;
-		satellite.satellites.forEach(function(moon) {
-			moon.star = this;
-		}.bind(this))
-	}
-
-	getSector() {
-		return this.sector;
+	updatePosition() {
+		/*
+		This function has to be empty, because the universe
+		updates positions of every celestial, but stars don't
+		change their positions
+		*/
 	}
 
 	getPosition() {
-		return new Vector(0, 0);
+		return this.position.copy();
+	}
+
+	getSector() {
+		return this.sector.copy();
+	}
+}
+
+/*------PLANETS AND MOONS SHARED CLASS------*/
+
+class OrbitingCelestial extends Celestial {
+	constructor(data, universe) {
+		super(data, universe)
+
+		this.orbitRadius = data.orbitRadius;
+		this.orbitInitialAngle = data.orbitInitialAngle;
+		this.orbitDirection = ph(data.orbitDirection, 1);
+		this.mass = data.mass;
+		this.radius = data.radius;
+		this.period = Math.PI*2 * Math.sqrt(Math.pow(this.orbitRadius, 3) / (universe.G * this.parent.mass));
+		this.velocity = Math.sqrt(universe.G * this.parent.mass / this.orbitRadius);
+	}
+
+	getTrueAnomalyAtTime(time) {
+		return this.orbitInitialAngle + this.orbitDirection * Math.PI*2 * time / this.period;
+	}
+
+	getPositionAtTime(time) {
+		return Vector.fromAngle(this.getTrueAnomalyAtTime(time), this.orbitRadius);
+	}
+
+	updatePosition(time) {
+		this.position = this.getPositionAtTime(time);
+		this.trueAnomaly = this.getTrueAnomalyAtTime(time);
+	}
+
+	getSector() {
+		return this.parent.getSector();
 	}
 }
 
 
 /*------PLANET CLASS------*/
 
-class Planet extends Celestial {
-	constructor(data) {
-		super(data);
-		this.subType = "Planet";
-		this.orbitRadius = data.orbitRadius;
-		this.orbitInitialAngle = data.orbitAngle;
-		this.mass = data.mass;
-		this.radius = data.radius;
+class Planet extends OrbitingCelestial {
+	constructor(data, universe) {
+		super(data, universe);
+
+		this.type = "Planet";
+		this.innerGravityField = 500000 * Math.pow(universe.G * this.mass, 1/4);
+		this.outerGravityField = this.getOuterGravityField();
+		this.parent.satellites.push(this);
+		this.parent.allSatellites.push(this);
 	}
 
-	getSector() {
-		return this.star.getSector();
+	recalculate() {
+		this.satellites.sort((a, b) => a.orbitRadius - b.orbitRadius);
+		let furthest = this.satellites[this.satellites.length-1];
+		this.gravityField = Math.max(
+			this.gravityField,
+			furthest.orbitRadius + furthest.gravityField * 4
+		);
 	}
 
 	getPosition() {
-		return Vector.fromAngle(this.orbitInitialAngle, this.orbitRadius);
+		return this.position.copy();
 	}
 }
 
 
 /*------MOON CLASS------*/
 
-class Moon extends Celestial {
-	constructor(data) {
-		super(data);
-		this.subType = "Moon";
-		this.orbitRadius = data.orbitRadius;
-		this.orbitInitialAngle = data.orbitAngle;
-		this.mass = data.mass;
-		this.radius = data.radius;
-	}
+class Moon extends OrbitingCelestial {
+	constructor(data, universe) {
+		super(data, universe);
 
-	getSector() {
-		return this.star.getSector();;
+		this.type = "Moon";
+		/*this.innerGravityField = Math.sqrt(
+			universe.G * this.mass * Math.pow(this.orbitRadius, 2)
+			/ (universe.G * this.parent.mass)
+		);*/
+		this.innerGravityField = 25000 * Math.pow(universe.G * this.mass, 1/4);
+		console.log("Moon innerGravityField:", this.innerGravityField);
+		this.outerGravityField = this.getOuterGravityField();
+		this.parent.satellites.push(this);
+		this.parent.parent.allSatellites.push(this);
+		this.parent.recalculate();
 	}
 
 	getPosition() {
-		return this.parent.getPosition()
-		.add(Vector.fromAngle(this.orbitInitialAngle, this.orbitRadius));
+		return this.parent.getPosition().add(this.position);
 	}
 }

@@ -5,3 +5,8 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden; }
+
+.game-canvas {
+  background-image: url("../stars.jpg");
+  background-position: center;
+  background-size: 100%; }
