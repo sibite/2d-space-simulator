@@ -40,7 +40,7 @@ Made from scratch to test my ability to make something that simulates a bit more
     </tr>
     <tr>
       <td><kbd>R</kbd></td>
-      <td>Inverse time direction</td>
+      <td>Invert time direction</td>
     </tr>
   </tbody>
 </table>
