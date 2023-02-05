@@ -24,11 +24,11 @@ Made from scratch to test my ability to make something that simulates a bit more
     </tr>
     <tr>
       <td><kbd>Q</kbd></td>
-      <td>Turn left</td>
+      <td>Rotate anticlockwise</td>
     </tr>
     <tr>
       <td><kbd>E</kbd></td>
-      <td>Turn right</td>
+      <td>Rotate clockwise</td>
     </tr>
     <tr>
       <td><kbd>+</kbd></td>
